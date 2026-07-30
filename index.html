@@ -59,7 +59,7 @@
   .field {
     margin-bottom: 12px;
   }
-  input[type="text"], input[type="number"] {
+  input[type="text"], input[type="number"], select {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid var(--border);
@@ -68,61 +68,25 @@
     background: #fff;
     color: var(--text);
   }
-  input:focus {
+  input:focus, select:focus {
     outline: none;
     border-color: var(--accent);
   }
 
-  .preset-row {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .preset-btn {
-    text-align: left;
-    padding: 12px 14px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: #fff;
-    cursor: pointer;
-    font-size: 14px;
-    color: var(--text);
-  }
-  .preset-btn.active {
-    border-color: var(--accent);
-    background: #eef3ff;
-    color: var(--accent);
-    font-weight: 600;
-  }
-
-  .item-row {
+  .roommate-row {
     display: flex;
     gap: 8px;
     align-items: center;
     margin-bottom: 8px;
   }
-  .item-row input[type="text"] { flex: 1.2; min-width: 0; }
-  .item-row input[type="number"] { flex: 0.8; min-width: 0; }
-  .payer-toggle {
+  .roommate-row input[type="text"] { flex: 1; }
+  .roommate-row .you-tag {
     flex: 0 0 auto;
-    display: flex;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  .payer-toggle button {
-    border: none;
-    background: #fff;
+    font-size: 12px;
     color: var(--muted);
-    padding: 9px 10px;
-    font-size: 13px;
-    cursor: pointer;
+    padding: 0 6px;
   }
-  .payer-toggle button.active {
-    background: var(--accent);
-    color: #fff;
-  }
-  .item-row .remove-btn {
+  .roommate-row .remove-btn {
     flex: 0 0 auto;
     background: none;
     border: 1px solid var(--border);
@@ -134,7 +98,43 @@
     font-size: 16px;
     line-height: 1;
   }
-  .item-row .remove-btn:hover { color: #d33; border-color: #d33; }
+  .roommate-row .remove-btn:hover { color: #d33; border-color: #d33; }
+  .roommate-row .remove-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .item-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .item-top {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .item-top input[type="text"] { flex: 1.4; min-width: 0; }
+  .item-top input[type="number"] { flex: 1; min-width: 0; }
+  .item-top .remove-btn {
+    flex: 0 0 auto;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .item-top .remove-btn:hover { color: #d33; border-color: #d33; }
+
+  .item-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .item-meta .meta-field { flex: 1; min-width: 140px; }
+  .item-meta label { margin-bottom: 3px; }
 
   .add-btn, .primary-btn, .copy-btn {
     cursor: pointer;
@@ -207,27 +207,12 @@
 <body>
 <div class="wrap">
   <h1>Rent Calculator</h1>
-  <p class="sub">Track who paid what, get the one next thing to do.</p>
+  <p class="sub">Track who paid what, get the one next thing to do &mdash; for any number of roommates.</p>
 
   <div class="card">
-    <h2>This month's pattern</h2>
-    <div class="preset-row" id="presets">
-      <button class="preset-btn" data-preset="me">I pay for all</button>
-      <button class="preset-btn" data-preset="roommate">Roommate pays for all</button>
-      <button class="preset-btn active" data-preset="custom">Custom (mix per item)</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Roommate's name & your Zelle</h2>
-    <div class="field">
-      <label for="roommateName">Roommate's name</label>
-      <input type="text" id="roommateName" placeholder="e.g. 光勇" value="光勇">
-    </div>
-    <div class="field">
-      <label for="payerZelle">Your Zelle (shown when they owe you)</label>
-      <input type="text" id="payerZelle" placeholder="e.g. ktwu@utexas.edu" value="ktwu@utexas.edu">
-    </div>
+    <h2>Roommates</h2>
+    <div id="roommates"></div>
+    <button class="add-btn" onclick="addRoommate()">+ Add roommate</button>
   </div>
 
   <div class="card">
@@ -246,58 +231,92 @@
   </div>
 
   <div class="card">
-    <h2>Next action</h2>
+    <h2>Next actions</h2>
     <div id="output">Fill in the items above and click "What do I do next?".</div>
     <button class="copy-btn" id="copyBtn" onclick="copyOutput()">Copy message</button>
   </div>
 
-  <footer>Pure HTML/CSS/JS. Nothing is sent anywhere; runs entirely in your browser.</footer>
+  <footer>Pure HTML/CSS/JS. Nothing is sent anywhere; runs entirely in your browser. Roommate names are saved locally so you don't retype them each month.</footer>
 </div>
 
 <script>
+const YOU_ID = '__you__';
 let lang = 'zh';
-let defaultPayer = 'custom'; // 'me' | 'roommate' | 'custom'
+let roommates = []; // [{id, name}], excludes YOU
+const STORAGE_KEY = 'rent-calc-roommates';
+
+function loadRoommates() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (Array.isArray(saved) && saved.length) return saved;
+  } catch (e) {}
+  return [{ id: 'r1', name: '光勇' }];
+}
+
+function saveRoommates() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(roommates));
+}
 
 function setLang(l) {
   lang = l;
   document.getElementById('btn-zh').classList.toggle('active', l === 'zh');
   document.getElementById('btn-en').classList.toggle('active', l === 'en');
+  renderRoommates();
+  refreshItemSelects();
 }
 
-document.querySelectorAll('.preset-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    defaultPayer = btn.dataset.preset;
-    if (defaultPayer !== 'custom') {
-      document.querySelectorAll('.item-row').forEach(row => setRowPayer(row, defaultPayer));
-    }
-  });
-});
+function renderRoommates() {
+  const container = document.getElementById('roommates');
+  container.innerHTML = '';
 
-function setRowPayer(row, payer) {
-  row.dataset.payer = payer;
-  row.querySelectorAll('.payer-toggle button').forEach(b => {
-    b.classList.toggle('active', b.dataset.payer === payer);
+  const youRow = document.createElement('div');
+  youRow.className = 'roommate-row';
+  youRow.innerHTML = `<input type="text" value="${lang === 'zh' ? '你（本人）' : 'You'}" disabled>`;
+  container.appendChild(youRow);
+
+  roommates.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'roommate-row';
+    row.innerHTML = `
+      <input type="text" class="roommate-name" data-id="${r.id}" value="${escapeAttr(r.name)}" placeholder="Name">
+      <button class="remove-btn" data-id="${r.id}" ${roommates.length <= 1 ? 'disabled' : ''} title="Remove">&times;</button>
+    `;
+    container.appendChild(row);
+  });
+
+  container.querySelectorAll('.roommate-name').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const r = roommates.find(x => x.id === inp.dataset.id);
+      if (r) { r.name = inp.value; saveRoommates(); refreshItemSelects(); }
+    });
+  });
+  container.querySelectorAll('.remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (roommates.length <= 1) return;
+      roommates = roommates.filter(x => x.id !== btn.dataset.id);
+      saveRoommates();
+      renderRoommates();
+      refreshItemSelects();
+    });
   });
 }
 
-function addItem(name = '', amount = '', payer = null) {
-  const container = document.getElementById('items');
-  const row = document.createElement('div');
-  row.className = 'item-row';
-  const initialPayer = payer || (defaultPayer === 'custom' ? 'me' : defaultPayer);
-  row.innerHTML = `
-    <input type="text" class="item-name" placeholder="e.g. Rent+utility" value="${escapeAttr(name)}">
-    <input type="number" class="item-amount" placeholder="0.00" step="0.01" value="${escapeAttr(amount)}">
-    <div class="payer-toggle">
-      <button type="button" data-payer="me" onclick="setRowPayer(this.closest('.item-row'),'me')">Me</button>
-      <button type="button" data-payer="roommate" onclick="setRowPayer(this.closest('.item-row'),'roommate')">Them</button>
-    </div>
-    <button class="remove-btn" onclick="this.parentElement.remove()" title="Remove">&times;</button>
-  `;
-  container.appendChild(row);
-  setRowPayer(row, initialPayer);
+function addRoommate() {
+  const id = 'r' + Date.now() + Math.floor(Math.random() * 1000);
+  roommates.push({ id, name: '' });
+  saveRoommates();
+  renderRoommates();
+  refreshItemSelects();
+}
+
+function everyone() {
+  return [{ id: YOU_ID, name: lang === 'zh' ? '你' : 'You' }, ...roommates];
+}
+
+function personLabel(id) {
+  if (id === YOU_ID) return lang === 'zh' ? '你' : 'you';
+  const r = roommates.find(x => x.id === id);
+  return (r && r.name.trim()) || (lang === 'zh' ? '（未命名）' : '(unnamed)');
 }
 
 function escapeAttr(s) {
@@ -308,15 +327,78 @@ function fmt(n) {
   return Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function frontedOptionsHtml(selectedId) {
+  return everyone().map(p =>
+    `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${escapeAttr(personLabel(p.id))}</option>`
+  ).join('');
+}
+
+function assigneeOptionsHtml(selectedId) {
+  return everyone().map(p =>
+    `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${escapeAttr(personLabel(p.id))}</option>`
+  ).join('');
+}
+
+function addItem(name = '', amount = '', frontedBy = YOU_ID, splitType = 'even', assignedTo = YOU_ID) {
+  const container = document.getElementById('items');
+  const card = document.createElement('div');
+  card.className = 'item-card';
+  card.dataset.splitType = splitType;
+  card.innerHTML = `
+    <div class="item-top">
+      <input type="text" class="item-name" placeholder="e.g. Rent+utility" value="${escapeAttr(name)}">
+      <input type="number" class="item-amount" placeholder="0.00" step="0.01" value="${escapeAttr(amount)}">
+      <button class="remove-btn" onclick="this.closest('.item-card').remove()" title="Remove">&times;</button>
+    </div>
+    <div class="item-meta">
+      <div class="meta-field">
+        <label>Paid by (fronted the cash)</label>
+        <select class="item-fronted">${frontedOptionsHtml(frontedBy)}</select>
+      </div>
+      <div class="meta-field">
+        <label>Split</label>
+        <select class="item-split">
+          <option value="even" ${splitType === 'even' ? 'selected' : ''}>Split evenly among everyone</option>
+          <option value="one" ${splitType === 'one' ? 'selected' : ''}>Just one person's cost (not shared)</option>
+        </select>
+      </div>
+      <div class="meta-field item-assignee-wrap" style="display:${splitType === 'one' ? '' : 'none'}">
+        <label>Whose cost</label>
+        <select class="item-assignee">${assigneeOptionsHtml(assignedTo)}</select>
+      </div>
+    </div>
+  `;
+  container.appendChild(card);
+
+  const splitSelect = card.querySelector('.item-split');
+  const assigneeWrap = card.querySelector('.item-assignee-wrap');
+  splitSelect.addEventListener('change', () => {
+    assigneeWrap.style.display = splitSelect.value === 'one' ? '' : 'none';
+  });
+}
+
+function refreshItemSelects() {
+  document.querySelectorAll('.item-card').forEach(card => {
+    const frontedSelect = card.querySelector('.item-fronted');
+    const assigneeSelect = card.querySelector('.item-assignee');
+    const prevFronted = frontedSelect.value;
+    const prevAssignee = assigneeSelect.value;
+    frontedSelect.innerHTML = frontedOptionsHtml(prevFronted);
+    assigneeSelect.innerHTML = assigneeOptionsHtml(prevAssignee);
+  });
+}
+
 function getItems() {
-  const rows = document.querySelectorAll('.item-row');
+  const cards = document.querySelectorAll('.item-card');
   const items = [];
-  rows.forEach(row => {
-    const name = row.querySelector('.item-name').value.trim();
-    const amount = parseFloat(row.querySelector('.item-amount').value);
-    const payer = row.dataset.payer;
+  cards.forEach(card => {
+    const name = card.querySelector('.item-name').value.trim();
+    const amount = parseFloat(card.querySelector('.item-amount').value);
+    const frontedBy = card.querySelector('.item-fronted').value;
+    const splitType = card.querySelector('.item-split').value;
+    const assignedTo = card.querySelector('.item-assignee').value;
     if (name && !isNaN(amount)) {
-      items.push({ name, amount, payer });
+      items.push({ name, amount, frontedBy, splitType, assignedTo });
     }
   });
   return items;
@@ -324,61 +406,55 @@ function getItems() {
 
 function generate() {
   const items = getItems();
-  const roommateName = document.getElementById('roommateName').value.trim() || (lang === 'zh' ? '室友' : 'roommate');
-  const payerZelle = document.getElementById('payerZelle').value.trim();
   const output = document.getElementById('output');
+  const people = everyone();
 
   if (items.length === 0) {
     output.textContent = lang === 'zh' ? '请至少填写一项费用。' : 'Please add at least one item.';
     return;
   }
 
-  const total = items.reduce((sum, it) => sum + it.amount, 0);
-  const paidByMe = items.filter(it => it.payer === 'me').reduce((s, it) => s + it.amount, 0);
-  const paidByRoommate = total - paidByMe;
-  const halfTotal = total / 2;
-  // positive: roommate owes me. negative: I owe roommate.
-  const netToMe = paidByMe - halfTotal;
+  const n = people.length;
+  // balance[id] = how much this person is owed overall (positive) or owes (negative)
+  const balance = {};
+  people.forEach(p => { balance[p.id] = 0; });
 
-  const meList = items.filter(it => it.payer === 'me').map(it => `${it.name} ${fmt(it.amount)} usd`).join(' + ');
-  const roommateList = items.filter(it => it.payer === 'roommate').map(it => `${it.name} ${fmt(it.amount)} usd`).join(' + ');
-
-  let msg;
-  const amt = fmt(netToMe);
-
-  if (Math.abs(netToMe) < 0.005) {
-    msg = lang === 'zh'
-      ? `本月账已经打平，${roommateName}不用给我钱，我也不用给${roommateName}钱。`
-      : `Everything's settled this month, no one owes anyone.`;
-  } else if (netToMe > 0) {
-    // roommate owes me
-    if (lang === 'zh') {
-      msg = `${roommateName}，` +
-        (meList ? `${meList}，这些都是我付，` : '') +
-        (roommateList ? `${roommateList}，这些是你付，` : '') +
-        `这个月一共${fmt(total)}，你给我${amt}（${fmt(paidByMe)}-${fmt(halfTotal)}=${amt}）就可以。🙏感谢，我的Zelle是${payerZelle}`;
+  items.forEach(it => {
+    // whoever fronted the cash is owed the full amount back, up front
+    balance[it.frontedBy] += it.amount;
+    if (it.splitType === 'even') {
+      const share = it.amount / n;
+      people.forEach(p => { balance[p.id] -= share; });
     } else {
-      msg = `Hi ${roommateName}, ` +
-        (meList ? `I paid ${meList}. ` : '') +
-        (roommateList ? `You paid ${roommateList}. ` : '') +
-        `Total this month is ${fmt(total)}. You owe me ${amt} (${fmt(paidByMe)} - ${fmt(halfTotal)} = ${amt}). 🙏 Thanks! My Zelle is ${payerZelle}`;
+      // whole cost belongs to one person
+      balance[it.assignedTo] -= it.amount;
     }
-  } else {
-    // I owe roommate
-    if (lang === 'zh') {
-      msg = `${roommateName}，` +
-        (roommateList ? `${roommateList}，这些是你付，` : '') +
-        (meList ? `${meList}，这些是我付，` : '') +
-        `这个月一共${fmt(total)}，我欠你${amt}，我会用Zelle转给你，麻烦告诉我你的Zelle账号。`;
-    } else {
-      msg = `Hi ${roommateName}, ` +
-        (roommateList ? `you paid ${roommateList}. ` : '') +
-        (meList ? `I paid ${meList}. ` : '') +
-        `Total this month is ${fmt(total)}. I owe you ${amt}. I'll send it via Zelle, please share your Zelle handle.`;
-    }
-  }
+  });
 
-  output.textContent = msg;
+  // You act as the household's clearinghouse: everyone settles through you.
+  // Each roommate's balance already nets "what they fronted" against "their
+  // even/assigned share", so the to-do is just: negative balance -> they
+  // Zelle you; positive balance -> you Zelle them. This holds for any N.
+  const lines = [];
+
+  roommates.forEach(r => {
+    const net = -balance[r.id]; // positive: they owe you; negative: you owe them
+    if (Math.abs(net) < 0.005) {
+      lines.push(lang === 'zh'
+        ? `本月账已经打平，${personLabel(r.id)}不用给你钱，你也不用给${personLabel(r.id)}钱。`
+        : `Everything's settled this month between you and ${personLabel(r.id)}.`);
+    } else if (net > 0) {
+      lines.push(lang === 'zh'
+        ? `${personLabel(r.id)}，你欠我${fmt(net)}，麻烦Zelle给我。🙏感谢`
+        : `Hi ${personLabel(r.id)}, you owe me ${fmt(net)}. Please Zelle it to me. 🙏 Thanks!`);
+    } else {
+      lines.push(lang === 'zh'
+        ? `${personLabel(r.id)}，我欠你${fmt(-net)}，我会用Zelle转给你，麻烦告诉我你的Zelle账号。`
+        : `Hi ${personLabel(r.id)}, I owe you ${fmt(-net)}. I'll send it via Zelle, please share your Zelle handle.`);
+    }
+  });
+
+  output.textContent = lines.join('\n');
   document.getElementById('copyBtn').classList.remove('copied');
   document.getElementById('copyBtn').textContent = 'Copy message';
 }
@@ -396,10 +472,14 @@ function copyOutput() {
   });
 }
 
-// seed with the example from the scenario: I paid everything
-addItem('Rent+utility', 1639.96, 'me');
-addItem('transaction fee', 10, 'me');
-addItem('spectrum', 65.33, 'me');
+// init
+roommates = loadRoommates();
+renderRoommates();
+
+// seed with the example from the scenario: you fronted everything, split evenly (2 people)
+addItem('Rent+utility', 1639.96, YOU_ID, 'even');
+addItem('transaction fee', 10, YOU_ID, 'even');
+addItem('spectrum', 65.33, YOU_ID, 'even');
 </script>
 </body>
 </html>

@@ -458,13 +458,13 @@ function buildRoommateMessage(r, items, balance, n) {
         let msg = `${name}，`;
         if (themList) msg += `${themList}，这些是你付，`;
         if (youList) msg += `${youList}，这些是我付，`;
-        msg += `一共是${sumExpr}=${fmt(total)}，我欠你一半（${fmt(total)}/2=${fmt(owe)}），我会用Zelle转给你，麻烦告诉我你的Zelle账号。`;
+        msg += `一共是${sumExpr}=${fmt(total)}，我欠你一半（${fmt(total)}/2=${fmt(owe)}），我会用Zelle转给你。`;
         return msg;
       } else {
         let msg = `Hi ${name}, `;
         if (themList) msg += `you paid ${themList}. `;
         if (youList) msg += `I paid ${youList}. `;
-        msg += `Total is ${sumExpr} = ${fmt(total)}. I owe you ${fmt(owe)}. I'll send it via Zelle, please share your Zelle handle.`;
+        msg += `Total is ${sumExpr} = ${fmt(total)}. I owe you ${fmt(owe)}. I'll send it via Zelle.`;
         return msg;
       }
     }
@@ -486,9 +486,9 @@ function buildRoommateMessage(r, items, balance, n) {
   } else {
     const owe = -net;
     if (lang === 'zh') {
-      return `${name}，这个月的费用是：${itemsList}。合计${fmt(evenItemsTotal)}，${n}个人平分，你的份额是${fmt(evenItemsTotal)}/${n}=${fmt(shareEach)}，算下来我欠你${fmt(owe)}，我会用Zelle转给你，麻烦告诉我你的Zelle账号。`;
+      return `${name}，这个月的费用是：${itemsList}。合计${fmt(evenItemsTotal)}，${n}个人平分，你的份额是${fmt(evenItemsTotal)}/${n}=${fmt(shareEach)}，算下来我欠你${fmt(owe)}，我会用Zelle转给你。`;
     } else {
-      return `Hi ${name}, this month's costs: ${itemsList}. Total ${fmt(evenItemsTotal)} split ${n} ways, your share is ${fmt(evenItemsTotal)}/${n} = ${fmt(shareEach)}, so I owe you ${fmt(owe)}. I'll send it via Zelle, please share your Zelle handle.`;
+      return `Hi ${name}, this month's costs: ${itemsList}. Total ${fmt(evenItemsTotal)} split ${n} ways, your share is ${fmt(evenItemsTotal)}/${n} = ${fmt(shareEach)}, so I owe you ${fmt(owe)}. I'll send it via Zelle.`;
     }
   }
 }

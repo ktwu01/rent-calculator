@@ -404,6 +404,95 @@ function getItems() {
   return items;
 }
 
+function itemLine(it) {
+  return `${it.name} ${fmt(it.amount)} usd`;
+}
+
+// Build one itemized, self-explanatory message for roommate r.
+// Shows every item that factors into r's share (who fronted it), the
+// share arithmetic, and the resulting owed amount.
+function buildRoommateMessage(r, items, balance, n) {
+  const name = personLabel(r.id);
+
+  // Items relevant to r: anything split evenly (affects everyone), or
+  // assigned wholly to r or to you.
+  const relevant = items.filter(it =>
+    it.splitType === 'even' || it.assignedTo === r.id || it.assignedTo === YOU_ID
+  );
+
+  const net = -balance[r.id]; // positive: they owe you; negative: you owe them
+
+  if (Math.abs(net) < 0.005) {
+    return lang === 'zh'
+      ? `${name}，本月账已经打平，你不用给我钱，我也不用给你钱。`
+      : `Hi ${name}, everything's settled this month, no one owes anyone.`;
+  }
+
+  if (n === 2) {
+    // Exactly one roommate: every relevant item was fronted by either of us.
+    const youFronted = relevant.filter(it => it.frontedBy === YOU_ID);
+    const themFronted = relevant.filter(it => it.frontedBy === r.id);
+    const youList = youFronted.map(itemLine).join(' + ');
+    const themList = themFronted.map(itemLine).join(' + ');
+    const combinedList = [...youFronted, ...themFronted];
+    const sumExpr = combinedList.map(it => fmt(it.amount)).join('+');
+    const total = combinedList.reduce((s, it) => s + it.amount, 0);
+
+    if (net > 0) {
+      if (lang === 'zh') {
+        let msg = `${name}，`;
+        if (youList) msg += `${youList}，这些都是我付，`;
+        if (themList) msg += `${themList}，这些是你付，`;
+        msg += `一共是${sumExpr}=${fmt(total)}，你给我一半（${fmt(total)}/2=${fmt(net)}）就可以。🙏感谢，麻烦Zelle给我`;
+        return msg;
+      } else {
+        let msg = `Hi ${name}, `;
+        if (youList) msg += `I paid ${youList}. `;
+        if (themList) msg += `You paid ${themList}. `;
+        msg += `Total is ${sumExpr} = ${fmt(total)}. Your half is ${fmt(total)}/2 = ${fmt(net)}. 🙏 Thanks! Please Zelle it to me.`;
+        return msg;
+      }
+    } else {
+      const owe = -net;
+      if (lang === 'zh') {
+        let msg = `${name}，`;
+        if (themList) msg += `${themList}，这些是你付，`;
+        if (youList) msg += `${youList}，这些是我付，`;
+        msg += `一共是${sumExpr}=${fmt(total)}，我欠你一半（${fmt(total)}/2=${fmt(owe)}），我会用Zelle转给你，麻烦告诉我你的Zelle账号。`;
+        return msg;
+      } else {
+        let msg = `Hi ${name}, `;
+        if (themList) msg += `you paid ${themList}. `;
+        if (youList) msg += `I paid ${youList}. `;
+        msg += `Total is ${sumExpr} = ${fmt(total)}. I owe you ${fmt(owe)}. I'll send it via Zelle, please share your Zelle handle.`;
+        return msg;
+      }
+    }
+  }
+
+  // 3+ roommates: list every relevant item with who fronted it (may include
+  // people other than "you" or r), then show r's share of the pooled total.
+  const withFronter = it => `${itemLine(it)}（${personLabel(it.frontedBy)}${lang === 'zh' ? '付' : ' paid'}）`;
+  const itemsList = relevant.map(withFronter).join(lang === 'zh' ? '，' : ', ');
+  const evenItemsTotal = relevant.filter(it => it.splitType === 'even').reduce((s, it) => s + it.amount, 0);
+  const shareEach = evenItemsTotal / n;
+
+  if (net > 0) {
+    if (lang === 'zh') {
+      return `${name}，这个月的费用是：${itemsList}。合计${fmt(evenItemsTotal)}，${n}个人平分，你的份额是${fmt(evenItemsTotal)}/${n}=${fmt(shareEach)}，算下来你欠我${fmt(net)}。🙏感谢，麻烦Zelle给我`;
+    } else {
+      return `Hi ${name}, this month's costs: ${itemsList}. Total ${fmt(evenItemsTotal)} split ${n} ways, your share is ${fmt(evenItemsTotal)}/${n} = ${fmt(shareEach)}, so you owe me ${fmt(net)}. 🙏 Thanks! Please Zelle it to me.`;
+    }
+  } else {
+    const owe = -net;
+    if (lang === 'zh') {
+      return `${name}，这个月的费用是：${itemsList}。合计${fmt(evenItemsTotal)}，${n}个人平分，你的份额是${fmt(evenItemsTotal)}/${n}=${fmt(shareEach)}，算下来我欠你${fmt(owe)}，我会用Zelle转给你，麻烦告诉我你的Zelle账号。`;
+    } else {
+      return `Hi ${name}, this month's costs: ${itemsList}. Total ${fmt(evenItemsTotal)} split ${n} ways, your share is ${fmt(evenItemsTotal)}/${n} = ${fmt(shareEach)}, so I owe you ${fmt(owe)}. I'll send it via Zelle, please share your Zelle handle.`;
+    }
+  }
+}
+
 function generate() {
   const items = getItems();
   const output = document.getElementById('output');
@@ -435,26 +524,11 @@ function generate() {
   // Each roommate's balance already nets "what they fronted" against "their
   // even/assigned share", so the to-do is just: negative balance -> they
   // Zelle you; positive balance -> you Zelle them. This holds for any N.
-  const lines = [];
+  // Every message is itemized (what was paid, by whom, the arithmetic) so
+  // the recipient can see exactly why the number is what it is.
+  const messages = roommates.map(r => buildRoommateMessage(r, items, balance, n));
 
-  roommates.forEach(r => {
-    const net = -balance[r.id]; // positive: they owe you; negative: you owe them
-    if (Math.abs(net) < 0.005) {
-      lines.push(lang === 'zh'
-        ? `本月账已经打平，${personLabel(r.id)}不用给你钱，你也不用给${personLabel(r.id)}钱。`
-        : `Everything's settled this month between you and ${personLabel(r.id)}.`);
-    } else if (net > 0) {
-      lines.push(lang === 'zh'
-        ? `${personLabel(r.id)}，你欠我${fmt(net)}，麻烦Zelle给我。🙏感谢`
-        : `Hi ${personLabel(r.id)}, you owe me ${fmt(net)}. Please Zelle it to me. 🙏 Thanks!`);
-    } else {
-      lines.push(lang === 'zh'
-        ? `${personLabel(r.id)}，我欠你${fmt(-net)}，我会用Zelle转给你，麻烦告诉我你的Zelle账号。`
-        : `Hi ${personLabel(r.id)}, I owe you ${fmt(-net)}. I'll send it via Zelle, please share your Zelle handle.`);
-    }
-  });
-
-  output.textContent = lines.join('\n');
+  output.textContent = messages.join('\n\n');
   document.getElementById('copyBtn').classList.remove('copied');
   document.getElementById('copyBtn').textContent = 'Copy message';
 }
